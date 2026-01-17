@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sports Betting UI</title>
+    <style>
+        :root {
+            --primary-color: #0d9737;
+            --bg-color: #f2f3f5;
+            --white: #ffffff;
+            --text-dark: #353a45;
+            --text-grey: #9ca0ab;
+            --border-color: #eaecef;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-dark);
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+        }
+
+        /* Loading State */
+        #loading {
+            text-align: center;
+            padding: 40px;
+            font-size: 18px;
+            color: var(--text-grey);
+        }
+
+        /* League Block */
+        .league-block {
+            background-color: var(--white);
+            border-radius: 4px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            overflow: hidden;
+        }
+
+        .league-header {
+            padding: 15px;
+            background-color: var(--white);
+            border-bottom: 1px solid var(--border-color);
+            font-weight: 700;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            border-left: 4px solid var(--primary-color);
+        }
+
+        .date-header {
+            background-color: #fafafa;
+            padding: 8px 15px;
+            font-size: 12px;
+            color: var(--text-dark);
+            font-weight: 600;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        /* Match Row Grid */
+        .match-row {
+            display: grid;
+            grid-template-columns: 2fr 1.5fr 1.5fr;
+            /* Info | Winner | O/U */
+            border-bottom: 1px solid var(--border-color);
+            padding: 12px 15px;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .match-row:last-child {
+            border-bottom: none;
+        }
+
+        /* Match Info Column */
+        .match-info {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .match-time {
+            font-size: 12px;
+            color: var(--text-dark);
+            min-width: 40px;
+        }
+
+        .match-teams {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+
+        .team-name {
+            font-size: 14px;
+            font-weight: 500;
+        }
+
+        /* Market Columns */
+        .market-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .market-header {
+            font-size: 10px;
+            color: var(--text-grey);
+            text-align: center;
+            margin-bottom: 5px;
+            display: flex;
+            justify-content: space-between;
+            padding: 0 5px;
+        }
+
+        .odds-container {
+            display: flex;
+            gap: 8px;
+        }
+
+        /* Odds Button */
+        .odd-btn {
+            flex: 1;
+            background-color: var(--bg-color);
+            border: 1px solid transparent;
+            border-radius: 3px;
+            padding: 8px 5px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            min-width: 60px;
+        }
+
+        .odd-btn:hover {
+            background-color: #e8e8e8;
+            border-color: #ccc;
+        }
+
+        .odd-btn.selected {
+            background-color: var(--primary-color);
+            color: var(--white);
+        }
+
+        .odd-btn.selected .odd-label,
+        .odd-btn.selected .odd-value {
+            color: var(--white);
+        }
+
+        .odd-label {
+            font-size: 10px;
+            color: var(--text-grey);
+            margin-bottom: 2px;
+        }
+
+        .odd-value {
+            font-size: 13px;
+            font-weight: 700;
+            color: var(--text-dark);
+        }
+
+        .specifier {
+            font-size: 11px;
+            color: var(--text-grey);
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 4px;
+            min-width: 35px;
+        }
+
+        /* Mobile Responsive */
+        @media (max-width: 768px) {
+            .match-row {
+                grid-template-columns: 1fr;
+                /* Stack vertically on mobile */
+                gap: 10px;
+            }
+
+            .match-info {
+                margin-bottom: 5px;
+            }
+
+            .odds-wrapper {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 10px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <div id="loading">Loading Matches...</div>
+        <div id="app"></div>
+    </div>
+
+    <script>
+        const app = document.getElementById('app');
+        const loading = document.getElementById('loading');
+
+        // Main function to initialize the app
+        async function init() {
+            try {
+                const response = await fetch('matches.json');
+
+                if (!response.ok) {
+                    throw new Error('Failed to load matches.json. Make sure you are running on a local server (http://) and not file://');
+                }
+
+                const data = await response.json();
+                renderData(data);
+                loading.style.display = 'none';
+
+            } catch (error) {
+                loading.innerHTML = `<span style="color:red">Error: ${error.message}</span>`;
+            }
+        }
+
+        // Helper to Group Data: League -> Date -> Matches
+        function groupMatches(matches) {
+            const grouped = {};
+
+            matches.forEach(match => {
+                if (!grouped[match.league]) {
+                    grouped[match.league] = {};
+                }
+
+                // Group by date string (e.g., "18/01 Sunday")
+                if (!grouped[match.league][match.date]) {
+                    grouped[match.league][match.date] = [];
+                }
+
+                grouped[match.league][match.date].push(match);
+            });
+
+            return grouped;
+        }
+
+        // Function to create HTML
+        function renderData(matches) {
+            const groupedData = groupMatches(matches);
+
+            // Loop through Leagues
+            for (const [league, dates] of Object.entries(groupedData)) {
+
+                const leagueBlock = document.createElement('div');
+                leagueBlock.className = 'league-block';
+
+                // League Header
+                const leagueHeader = document.createElement('div');
+                leagueHeader.className = 'league-header';
+                leagueHeader.textContent = league;
+                leagueBlock.appendChild(leagueHeader);
+
+                // Loop through Dates within League
+                for (const [date, matchList] of Object.entries(dates)) {
+
+                    const dateHeader = document.createElement('div');
+                    dateHeader.className = 'date-header';
+                    dateHeader.textContent = date;
+                    leagueBlock.appendChild(dateHeader);
+
+                    // Loop through Matches
+                    matchList.forEach(match => {
+                        const matchRow = document.createElement('div');
+                        matchRow.className = 'match-row';
+
+                        // 1. Info Section
+                        const infoDiv = document.createElement('div');
+                        infoDiv.className = 'match-info';
+                        infoDiv.innerHTML = `
+                            <div class="match-time">
+                                <div>${match.time}</div>
+                                <div style="color:#ccc; font-size:10px">ID: ${match.id}</div>
+                            </div>
+                            <div class="match-teams">
+                                <div class="team-name">${match.teams.home}</div>
+                                <div class="team-name">${match.teams.away}</div>
+                            </div>
+                        `;
+
+                        // 2. Winner Odds (1 vs 2)
+                        const winnerDiv = document.createElement('div');
+                        winnerDiv.className = 'market-group';
+
+                        // Only render if odds exist
+                        if (match.odds['1'] && match.odds['2']) {
+                            winnerDiv.innerHTML = `
+                                <div class="market-header"><span>1</span><span>2</span></div>
+                                <div class="odds-container">
+                                    <div class="odd-btn" onclick="toggleBet(this)">
+                                        <div class="odd-label">Home</div>
+                                        <div class="odd-value">${match.odds['1']}</div>
+                                    </div>
+                                    <div class="odd-btn" onclick="toggleBet(this)">
+                                        <div class="odd-label">Away</div>
+                                        <div class="odd-value">${match.odds['2']}</div>
+                                    </div>
+                                </div>
+                            `;
+                        } else {
+                            winnerDiv.innerHTML = `<div class="odds-container" style="justify-content:center; color:#ccc; font-size:12px;">Locked</div>`;
+                        }
+
+                        // 3. Over/Under Odds
+                        const ouDiv = document.createElement('div');
+                        ouDiv.className = 'market-group';
+
+                        if (match.odds.over && match.odds.under) {
+                            ouDiv.innerHTML = `
+                                <div class="market-header"><span>Over</span><span>Under</span></div>
+                                <div class="odds-container">
+                                    <div class="odd-btn" onclick="toggleBet(this)">
+                                        <div class="odd-label">O</div>
+                                        <div class="odd-value">${match.odds.over}</div>
+                                    </div>
+                                    <div class="specifier">${match.odds.specifier || ''}</div>
+                                    <div class="odd-btn" onclick="toggleBet(this)">
+                                        <div class="odd-label">U</div>
+                                        <div class="odd-value">${match.odds.under}</div>
+                                    </div>
+                                </div>
+                            `;
+                        } else {
+                            ouDiv.innerHTML = `<div class="odds-container" style="justify-content:center; color:#ccc; font-size:12px;">Locked</div>`;
+                        }
+
+                        // Append sections to row
+                        // For mobile layout wrapper
+                        const oddsWrapper = document.createElement('div');
+                        oddsWrapper.className = 'odds-wrapper';
+                        oddsWrapper.style.display = 'contents'; // Default for desktop
+
+                        oddsWrapper.appendChild(winnerDiv);
+                        oddsWrapper.appendChild(ouDiv);
+
+                        matchRow.appendChild(infoDiv);
+                        matchRow.appendChild(oddsWrapper);
+
+                        leagueBlock.appendChild(matchRow);
+                    });
+                }
+
+                app.appendChild(leagueBlock);
+            }
+        }
+
+        // Simple function to toggle visual selection of odds
+        window.toggleBet = function (element) {
+            // Check if already selected to deselect
+            if (element.classList.contains('selected')) {
+                element.classList.remove('selected');
+            } else {
+                // Remove selected from neighbors in same container (mutual exclusivity logic)
+                // Note: In real betting, you usually can't bet Home AND Away on same ticket, 
+                // but for UI demo we just toggle visually.
+                element.classList.add('selected');
+            }
+        }
+
+        // Start
+        init();
+
+    </script>
+</body>
+
+</html>
