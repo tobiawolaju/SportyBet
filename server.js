@@ -1,5 +1,9 @@
 import puppeteer from "puppeteer";
 import fs from "fs";
+import express from "express";
+
+const app = express();
+const PORT = 3000;
 
 async function scrapeAndExtract() {
     const browser = await puppeteer.launch({
@@ -128,16 +132,56 @@ async function scrapeAndExtract() {
             return matches;
         });
 
-        // Save JSON to file
-        fs.writeFileSync("matches.json", JSON.stringify(extractedData, null, 2));
         console.log(`Successfully scraped ${extractedData.length} matches.`);
-        console.log("Data saved to matches.json");
+        return extractedData;
 
     } catch (error) {
         console.error("Scraping failed:", error.message);
+        throw error;
     } finally {
         await browser.close();
     }
 }
 
-scrapeAndExtract();
+// scrapeAndExtract();
+
+app.get("/api/matches", async (req, res) => {
+    try {
+        console.log("Fetching matches directly from SportyBet...");
+        const matches = await scrapeAndExtract();
+        res.json(matches);
+    } catch (error) {
+        res.status(500).json({ error: "Scraping failed: " + error.message });
+    }
+});
+
+// Endpoint to trigger scrape manually (supports GET and POST)
+app.get("/api/scrape", async (req, res) => {
+    try {
+        const matches = await scrapeAndExtract();
+        res.json({ message: "Scraping completed successfully", count: matches.length, data: matches });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+app.post("/api/scrape", async (req, res) => {
+    try {
+        const matches = await scrapeAndExtract();
+        res.json({ message: "Scraping completed successfully", count: matches.length, data: matches });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+console.log("Starting Express server...");
+app.listen(PORT, () => {
+    console.log(`Server is running on http://localhost:${PORT}`);
+    console.log(`API matches endpoint: http://localhost:${PORT}/api/matches`);
+}).on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+        console.error(`Error: Port ${PORT} is already in use. Please stop any other processes using this port.`);
+    } else {
+        console.error('Server error:', err);
+    }
+});
