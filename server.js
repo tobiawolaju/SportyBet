@@ -1,184 +1,143 @@
-import express from 'express';
-import puppeteer from 'puppeteer';
+import puppeteer from "puppeteer";
+import fs from "fs";
 
-const app = express();
-const PORT = 3000;
+async function scrapeAndExtract() {
+    const browser = await puppeteer.launch({
+        headless: true, // Set to false if you want to see the browser working
+        args: ['--no-sandbox', '--disable-setuid-sandbox']
+    });
 
-// 1. Configuration: Map Endpoints to Specific SportyBet URLs
-const URL_MAP = {
-    basketball: "https://www.sportybet.com/ng/sport/basketball/sr:category:15_sr:category:top/sr:tournament:648_sr:tournament:138_sr:tournament:132_sr:tournament:264_sr:tournament:1562_sr:tournament:227_sr:tournament:262_sr:tournament:519_sr:tournament:1680_sr:tournament:1566/",
-    tennis: "https://www.sportybet.com/ng/sport/tennis/sr:category:6/sr:tournament:2571",
-    boxing: "https://www.sportybet.com/ng/sport/boxing/sr:category:27/sr:tournament:24327",
-    mma: "https://www.sportybet.com/ng/sport/mma",
-    darts: "https://www.sportybet.com/ng/sport/darts",
-    badminton: "https://www.sportybet.com/ng/sport/badminton",
-    baseball: "https://www.sportybet.com/ng/sport/baseball",
-    // Default fallback if needed
-    football: "https://www.sportybet.com/ng/sport/football"
-};
+    const page = await browser.newPage();
 
-// 2. The Scraping Logic (Reused and made generic)
-async function scrapeSportyBet(url) {
-    let browser = null;
+    // Set viewport to ensure desktop view is loaded
+    await page.setViewport({ width: 1366, height: 768 });
+
+    // Set a realistic User-Agent
+    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
+
     try {
-        browser = await puppeteer.launch({
-            headless: "new", // Use new headless mode
-            args: ['--no-sandbox', '--disable-setuid-sandbox']
-        });
-
-        const page = await browser.newPage();
-
-        // Block images and fonts to speed up loading
-        await page.setRequestInterception(true);
-        page.on('request', (req) => {
-            if (['image', 'font', 'stylesheet'].includes(req.resourceType())) {
-                req.abort();
-            } else {
-                req.continue();
+        console.log("Navigating to SportyBet...");
+        // Increase timeout to 60 seconds as betting sites can be heavy
+        await page.goto(
+            "https://www.sportybet.com/ng/sport/basketball/sr:category:15_sr:category:top/sr:tournament:648_sr:tournament:138_sr:tournament:132_sr:tournament:264_sr:tournament:1562_sr:tournament:227_sr:tournament:262_sr:tournament:519_sr:tournament:1680_sr:tournament:1566/",
+            {
+                waitUntil: "networkidle2",
+                timeout: 60000
             }
-        });
+        );
 
-        // Set viewport and User Agent
-        await page.setViewport({ width: 1366, height: 768 });
-        await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-
-        console.log(`[Scraper] Navigating to: ${url}`);
-        await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
-
-        // Wait for the main match container
+        console.log("Waiting for match data to render...");
+        // Critical: Wait for the specific class that holds the match data
         try {
-            await page.waitForSelector('.match-league', { timeout: 15000 });
+            await page.waitForSelector('.match-league', { timeout: 30000 });
         } catch (e) {
-            console.log("[Scraper] Warning: .match-league not found (Page might be empty)");
-            return []; // Return empty array if no matches found
+            console.log("Warning: Selector .match-league not found within timeout. Page might be empty or loading slowly.");
         }
 
-        // Extract Data in Browser Context
-        const matches = await page.evaluate(() => {
-            const extracted = [];
+        console.log("Extracting data...");
+
+        // page.evaluate runs the code INSIDE the browser, where 'document' exists
+        const extractedData = await page.evaluate(() => {
+            const matches = [];
+
+            // 1. Select all League containers
             const leagueContainers = document.querySelectorAll('.match-league');
 
             leagueContainers.forEach(leagueContainer => {
+                // Extract League Name
                 const leagueNameEl = leagueContainer.querySelector('.league-title .text');
                 const leagueName = leagueNameEl ? leagueNameEl.innerText.trim() : "Unknown League";
 
+                // Get all rows (both date rows and match rows) within this league
                 const rows = leagueContainer.querySelectorAll('.match-table .m-table-row');
+
                 let currentDate = "";
 
                 rows.forEach(row => {
-                    // Handle Date Rows
+                    // 2. Check if this is a Date Row (e.g., "17/01 Saturday")
                     if (row.classList.contains('date-row')) {
                         const dateEl = row.querySelector('.date');
-                        if (dateEl) currentDate = dateEl.innerText.trim();
+                        if (dateEl) {
+                            currentDate = dateEl.innerText.trim();
+                        }
                     }
-                    // Handle Match Rows
+                    // 3. Check if this is a Match Row
                     else if (row.classList.contains('match-row')) {
                         try {
+                            // Extract Time
                             const timeEl = row.querySelector('.clock-time');
+                            const time = timeEl ? timeEl.innerText.trim() : "";
+
+                            // Extract Game ID
                             const idEl = row.querySelector('.game-id');
+                            // Remove "ID: " prefix if present
+                            const gameId = idEl ? idEl.innerText.replace('ID:', '').trim() : "";
+
+                            // Extract Teams
                             const homeTeamEl = row.querySelector('.home-team');
                             const awayTeamEl = row.querySelector('.away-team');
-
-                            const time = timeEl ? timeEl.innerText.trim() : "";
-                            const gameId = idEl ? idEl.innerText.replace('ID:', '').trim() : "";
                             const homeTeam = homeTeamEl ? homeTeamEl.innerText.trim() : "";
                             const awayTeam = awayTeamEl ? awayTeamEl.innerText.trim() : "";
 
-                            // Dynamic Odds Extraction
-                            // We don't assume specific market names (like Over/Under) because 
-                            // Tennis/Boxing differs from Basketball. We grab column 1 and column 2.
+                            // Extract Odds
                             const marketCells = row.querySelectorAll('.market-cell .m-market');
                             let oddsData = {};
 
-                            // Market 1 (Usually Winner / 1x2 / Moneyline)
                             if (marketCells.length > 0) {
-                                const outcomes = marketCells[0].querySelectorAll('.m-outcome .m-outcome-odds');
-                                // Map based on index (0=Home, 1=Draw/Away depending on sport)
-                                if (outcomes.length > 0) oddsData['outcome_1'] = outcomes[0].innerText.trim();
-                                if (outcomes.length > 1) oddsData['outcome_2'] = outcomes[1].innerText.trim();
-                                if (outcomes.length > 2) oddsData['outcome_x'] = outcomes[2].innerText.trim(); // For 3-way markets
+                                // Winner Market
+                                const winnerOutcomes = marketCells[0].querySelectorAll('.m-outcome .m-outcome-odds');
+                                if (winnerOutcomes.length >= 2) {
+                                    oddsData['1'] = winnerOutcomes[0].innerText.trim();
+                                    oddsData['2'] = winnerOutcomes[1].innerText.trim();
+                                }
                             }
 
-                            // Market 2 (Usually Over/Under or Handicap)
+                            // Optional: Extract Handicap/Over/Under if present
                             if (marketCells.length > 1) {
                                 const specifierEl = marketCells[1].querySelector('.af-select-title .af-select-input');
-                                const secOutcomes = marketCells[1].querySelectorAll('.m-outcome .m-outcome-odds');
+                                const secondaryOutcomes = marketCells[1].querySelectorAll('.m-outcome .m-outcome-odds');
 
-                                if (specifierEl) oddsData['specifier'] = specifierEl.innerText.trim();
-                                if (secOutcomes.length > 0) oddsData['sec_outcome_1'] = secOutcomes[0].innerText.trim();
-                                if (secOutcomes.length > 1) oddsData['sec_outcome_2'] = secOutcomes[1].innerText.trim();
+                                if (specifierEl && secondaryOutcomes.length >= 2) {
+                                    oddsData['specifier'] = specifierEl.innerText.trim();
+                                    oddsData['over'] = secondaryOutcomes[0].innerText.trim();
+                                    oddsData['under'] = secondaryOutcomes[1].innerText.trim();
+                                }
                             }
 
-                            extracted.push({
+                            // 4. Construct the JSON object
+                            matches.push({
                                 league: leagueName,
                                 id: gameId,
                                 date: currentDate,
                                 time: time,
-                                teams: { home: homeTeam, away: awayTeam },
+                                teams: {
+                                    home: homeTeam,
+                                    away: awayTeam
+                                },
                                 odds: oddsData
                             });
 
                         } catch (err) {
-                            // Skip bad rows
+                            // We can't console.error inside browser context easily to node terminal, 
+                            // but this prevents crash
                         }
                     }
                 });
             });
-            return extracted;
+
+            return matches;
         });
 
-        return matches;
+        // Save JSON to file
+        fs.writeFileSync("matches.json", JSON.stringify(extractedData, null, 2));
+        console.log(`Successfully scraped ${extractedData.length} matches.`);
+        console.log("Data saved to matches.json");
 
     } catch (error) {
-        console.error("[Scraper] Error:", error.message);
-        throw error;
+        console.error("Scraping failed:", error.message);
     } finally {
-        if (browser) await browser.close();
+        await browser.close();
     }
 }
 
-// 3. API Routes
-
-// Route: /:sport (e.g., /basketball, /tennis)
-app.get('/:sport', async (req, res) => {
-    const sportKey = req.params.sport.toLowerCase();
-    const targetUrl = URL_MAP[sportKey];
-
-    if (!targetUrl) {
-        return res.status(404).json({
-            error: "Sport not found",
-            message: `Available endpoints: ${Object.keys(URL_MAP).map(k => '/' + k).join(', ')}`
-        });
-    }
-
-    try {
-        console.log(`[API] Received request for: ${sportKey}`);
-        const data = await scrapeSportyBet(targetUrl);
-        res.json({
-            sport: sportKey,
-            count: data.length,
-            matches: data
-        });
-    } catch (error) {
-        res.status(500).json({ error: "Scraping failed", details: error.message });
-    }
-});
-
-// Root Route
-app.get('/', (req, res) => {
-    res.json({
-        message: "SportyBet Scraper API is running.",
-        usage: "GET /:sport",
-        examples: [
-            "http://localhost:3000/basketball",
-            "http://localhost:3000/tennis",
-            "http://localhost:3000/boxing",
-            "http://localhost:3000/mma"
-        ]
-    });
-});
-
-// 4. Start Server
-app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-});
+scrapeAndExtract();
