@@ -23,7 +23,7 @@ async function scrapeAndExtract() {
         console.log("Navigating to SportyBet...");
         // Increase timeout to 60 seconds as betting sites can be heavy
         await page.goto(
-            "https://www.sportybet.com/ng/sport/basketball/sr:category:15_sr:category:top/sr:tournament:648_sr:tournament:138_sr:tournament:132_sr:tournament:264_sr:tournament:1562_sr:tournament:227_sr:tournament:262_sr:tournament:519_sr:tournament:1680_sr:tournament:1566/",
+            "https://www.sportybet.com/ng/sport/basketball/today",
             {
                 waitUntil: "networkidle2",
                 timeout: 60000

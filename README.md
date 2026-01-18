@@ -9,9 +9,39 @@ This repository contains research and implementation details for four distinct a
     - [2. Gradient Boosting (XGBoost)](#2-gradient-boosting-xgboost)
     - [3. PID Controller](#3-pid-controller-reactive-risk)
     - [4. Conformal Prediction](#4-conformal-prediction-statistical-risk)
-2. [Comparative Analysis](#comparative-analysis)
-3. [The Recommended Stack](#the-recommended-stack)
-4. [Implementation Logic](#implementation-logic)
+
+2. [Data Acquisition (Scraper)](#data-acquisition-scraper)
+3. [Live API Endpoints](#live-api-endpoints)
+
+4. [Comparative Analysis](#comparative-analysis)
+5. [The Recommended Stack](#the-recommended-stack)
+6. [Implementation Logic](#implementation-logic)
+
+---
+
+## Data Acquisition (Scraper)
+
+The system includes a Puppeteer-based scraper to fetch live odds from SportyBet.
+
+**Features:**
+- Headless browsing with realistic User-Agent.
+- Dynamic selector waiting for async data loading.
+- JSON data extraction for Match ID, Teams, Time, and Odds (Winner, Over/Under).
+
+**Local Setup:**
+```bash
+npm install
+npm start
+```
+
+## Live API Endpoints
+
+The project is deployed on Render and provides a public API for match data.
+
+- **Base URL:** `https://sportybet-vj0n.onrender.com`
+- **GET `/api/matches`**: Returns a list of all scraped matches.
+    - [View Live Matches](https://sportybet-vj0n.onrender.com/api/matches)
+- **POST `/api/scrape`**: Manually triggers a fresh scrape (useful for cron jobs).
 
 ---
 
