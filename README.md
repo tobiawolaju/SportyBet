@@ -1,24 +1,53 @@
-# Sports Prediction Architectures: Low-Risk Modeling
+# SportyBet — Low-Risk Basketball Totals (Ongoing Experiment)
 
-This repository contains research and implementation details for four distinct architectural approaches to sports betting prediction. The primary objective of this project is **Risk Minimization**, specifically targeting a **90% Confidence Interval (10% Risk)** for Basketball *Alternative Over/Under* markets.
+**thesis:**
+predicting basketball totals is easy. **not losing money is hard**.
 
-## Table of Contents
+this repository is a **never-finished experiment** focused on one thing only:
 
-1. [Architectures Overview](#architectures-overview)
-    - [1. GNN + Transformer](#1-gnn--transformer-deep-learning)
-    - [2. Gradient Boosting (XGBoost)](#2-gradient-boosting-xgboost)
-    - [3. PID Controller](#3-pid-controller-reactive-risk)
-    - [4. Conformal Prediction](#4-conformal-prediction-statistical-risk)
-2. [Project Structure](#project-structure)
-3. [Data Acquisition (Scraper)](#data-acquisition-scraper)
-4. [Live API Endpoints](#live-api-endpoints)
-5. [Comparative Analysis](#comparative-analysis)
-6. [The Recommended Stack](#the-recommended-stack)
-7. [Implementation Logic](#implementation-logic)
+> **minimizing downside risk in basketball Alternative Over/Under markets using statistically calibrated models**
+
+we explicitly optimize for **coverage guarantees**, not raw prediction accuracy.
 
 ---
 
-## Project Structure
+## what this repo actually does
+
+* predicts **expected total points (μ)** per game using **XGBoost**
+* converts predictions into **risk-controlled betting floors** using **Conformal Prediction**
+* filters bets via strict **no-edge → no-bet** rules
+* tracks **results, drawdowns, and calibration drift** over time
+
+no neural hype. no gut calls. no martingale nonsense.
+
+---
+
+## core principles
+
+* **risk > accuracy**
+* **calibration > confidence**
+* **process > outcomes**
+* if the model is uncertain → **we do nothing**
+
+this is a capital-preservation system first, a prediction system second.
+
+---
+
+## current stack (locked)
+
+| layer            | tool                          | status           |
+| ---------------- | ----------------------------- | ---------------- |
+| point prediction | XGBoost                       | ✅ core           |
+| risk calibration | Conformal Prediction          | ✅ non-negotiable |
+| data ingestion   | Puppeteer scraper (SportyBet) | ✅ live           |
+| betting logic    | floor + threshold rules       | ✅ evolving       |
+| bankroll control | simulation + drawdown rules   | 🚧 active        |
+
+everything else is explicitly out of scope.
+
+---
+
+## project structure
 
 ```text
 SportyBet/
@@ -27,32 +56,13 @@ SportyBet/
 ├── data/
 │   ├── raw/
 │   │   ├── matches/
-│   │   │   └── sportybet_YYYY_MM_DD.json
 │   │   └── stats/
-│   │       ├── cba_raw.csv
-│   │       └── lnb_raw.csv
-│   │
 │   ├── processed/
-│   │   ├── cba_features.parquet
-│   │   ├── lnb_features.parquet
-│   │   └── metadata.json
-│   │
 │   └── splits/
-│       ├── cba_train.csv
-│       ├── cba_calibration.csv
-│       └── cba_test.csv
 
 ├── models/
 │   ├── xgboost/
-│   │   ├── train.py
-│   │   ├── predict.py
-│   │   ├── features.py
-│   │   └── model.bin
-│   │
 │   └── conformal/
-│       ├── calibrate.py
-│       ├── buffers.json
-│       └── diagnostics.py
 
 ├── strategy/
 │   ├── threshold.py
@@ -64,157 +74,108 @@ SportyBet/
 │   ├── backtest.py
 │   └── reports/
 
+├── results/               ← immutable experiment logs
+│   ├── daily/
+│   ├── weekly/
+│   ├── calibration/
+│   └── README.md
+
 ├── services/
-│   ├── matchfetcher/        ← your EXISTING puppeteer app
-│   │   ├── server.js
-│   │   ├── puppeteer.config.cjs
-│   │   └── package.json
-│   │
+│   ├── matchfetcher/       ← puppeteer odds scraper
 │   └── predictor_api/
-│       ├── app.py
-│       └── routes.py
 
 └── notebooks/
     ├── residuals.ipynb
     └── feature_sanity.ipynb
 ```
 
+**rule:**
+models change. data grows. **results never get rewritten**.
+
 ---
 
-## Data Acquisition (Scraper)
+## betting logic (the only rule that matters)
 
-The system includes a Puppeteer-based scraper to fetch live odds from SportyBet.
+we do **not** bet the model prediction.
 
-**Features:**
-- Headless browsing with realistic User-Agent.
-- Dynamic selector waiting for async data loading.
-- JSON data extraction for Match ID, Teams, Time, and Odds (Winner, Over/Under).
+we bet the **mathematical floor**.
 
-**Local Setup:**
-```bash
-npm install
-npm start
+```
+floor = μ − conformal_buffer
 ```
 
-## Live API Endpoints
+a bet is placed **only if**:
 
-The project is deployed on Render and provides a public API for match data.
+```
+floor > bookmaker_line + safety_margin
+```
 
-- **Base URL:** `https://sportybet-vj0n.onrender.com`
-- **GET `/api/matches`**: Returns a list of all scraped matches.
-    - [View Live Matches](https://sportybet-vj0n.onrender.com/api/matches)
-- **POST `/api/scrape`**: Manually triggers a fresh scrape (useful for cron jobs).
+no edge → no bet
+close call → no bet
+bad calibration → no bet
 
----
-
-## Architectures Overview
-
-### 1. GNN + Transformer (Deep Learning)
-**Role:** Relationship & Sequence Modeling  
-**Status:** *Cutting Edge / Experimental*
-
-This hybrid architecture treats the league as a graph and the season as a sequence.
-*   **Graph Neural Network (GNN):** Treats Teams as **Nodes** and Matches as **Edges**. It updates "Team Strength Embeddings" based on who played whom. (e.g., A win against a strong opponent is weighted heavier than a win against a weak one).
-*   **Transformer:** Takes the sequence of embeddings generated by the GNN to model momentum, fatigue, and form over time.
-
-**Verdict:** Extremely powerful for feature extraction but often over-complex for simple tabular sports statistics. prone to "over-smoothing" in fully connected leagues.
-
-### 2. Gradient Boosting (XGBoost)
-**Role:** Regression & Classification  
-**Status:** *Industry Standard*
-
-A decision-tree ensemble method that builds models sequentially to correct the errors of previous models.
-*   **Strengths:** Best-in-class performance on tabular data (Points, Rebounds, Pace, Efficiency).
-*   **Feature Importance:** Automatically determines which factors (e.g., "Away Team Defense") matter most.
-
-**Verdict:** Generally creates the most accurate point predictions ($\mu$) for sports datasets under 100,000 samples.
-
-### 3. PID Controller (Reactive Risk)
-**Role:** Dynamic Error Correction  
-**Status:** *Not Recommended for Prediction*
-
-A Control Theory mechanism used to adjust the "Safety Margin" based on recent model performance.
-*   **Proportional (P):** Reacts to the immediate error of the last match.
-*   **Integral (I):** Reacts to accumulated bias over time.
-*   **Derivative (D):** Reacts to sudden changes in league scoring trends.
-
-**Verdict:** **Rejected.** PID is *reactive*. If a specific match is an anomaly (players shot poorly), PID overcorrects the next prediction, potentially ruining a valid bet.
-
-### 4. Conformal Prediction (Statistical Risk)
-**Role:** Confidence Interval Generation  
-**Status:** *Mathematically Correct*
-
-A rigorous statistical framework that transforms point predictions into prediction *sets* or *intervals* with a guaranteed coverage probability.
-*   **Calibration:** Uses a hold-out dataset to calculate the distribution of errors.
-*   **Safety Buffer:** Calculates the exact margin ($N$) required to ensure that 90% of historical actual outcomes fall above `Predicted - N`.
-
-**Verdict:** **Accepted.** This is the scientifically correct way to guarantee a 10% risk profile.
+abstention is a valid outcome.
 
 ---
 
-## Comparative Analysis
+## results & transparency
 
-| Feature | GNN + Transformer | XGBoost | PID Controller | Conformal Prediction |
-| :--- | :--- | :--- | :--- | :--- |
-| **Primary Use** | Complex Relations | Tabular Accuracy | System Stability | Risk Management |
-| **Data Type** | Graphs/Sequences | Structured Stats | Time-series Error | Residual Errors |
-| **Accuracy** | High (Hard to tune) | **Highest** | Low (Reactive) | N/A (Calibrator) |
-| **Risk Control**| Low (Black box) | Medium | Medium | **Highest** |
-| **Complexity** | High | Low | Low | Low |
+all live and simulated outcomes are stored in `/results`.
 
----
+this includes:
 
-## The Recommended Stack
+* hit rate
+* realized vs expected coverage
+* max drawdown
+* streak behavior
+* calibration drift by league
 
-For maximum accuracy and minimum risk, this project utilizes a **Hybrid Pipeline** rather than a single model.
-
-1.  **Feature Engineering (GNN):** Use a shallow GAT (Graph Attention Network) to generate "Opponent Strength Embeddings."
-2.  **Prediction Engine (XGBoost):** Feed the GNN embeddings + raw stats (Four Factors) into XGBoost to predict the **Total Points**.
-3.  **Risk Engine (Conformal Prediction):** Use Conformal Prediction on the XGBoost residuals to calculate the dynamic **Safety Buffer**.
-
-### The "Floor" Strategy
-The system does not bet on the predicted total. It bets on the **Mathematical Floor**.
-
-> **Formula:** `Target Line = XGBoost_Prediction - Conformal_Safety_Buffer`
+if this repo ever “looks quiet”, that usually means **the system is correctly doing nothing**.
 
 ---
 
-## Implementation Logic
+## live odds ingestion
 
-### Python Pseudo-Code for the Hybrid Pipeline
+sportybet odds are scraped via a puppeteer service and exposed through a simple API.
 
-```python
-import numpy as np
-import xgboost as xgb
+* `GET /api/matches` — today’s matches + totals
+* `POST /api/scrape` — manual refresh
 
-# 1. Prediction Phase (XGBoost)
-# ---------------------------------------------
-# Train model on historical data (Pace, Efficiency, GNN Embeddings)
-model = xgb.XGBRegressor()
-model.fit(X_train, y_train)
+this service is intentionally dumb. all intelligence lives downstream.
 
-# 2. Calibration Phase (Conformal Prediction)
-# ---------------------------------------------
-# Predict on a calibration set the model hasn't seen
-preds_cal = model.predict(X_cal)
-actuals_cal = y_cal
+---
 
-# Calculate Signed Errors (Prediction - Actual)
-# We focus on cases where Actual < Prediction (The risk for OVER betting)
-errors = preds_cal - actuals_cal
+## repo activity
 
-# Calculate the 90th Percentile of Error
-# This is the buffer needed to cover 90% of historical misses
-safety_buffer = np.percentile(errors, 90)
-print(f"Required Safety Buffer for 90% Confidence: {safety_buffer} points")
+![GitHub stars over time](https://starchart.cc/tobiawolaju/SportyBet.svg)
 
-# 3. Execution Phase (Live Betting)
-# ---------------------------------------------
-# Predict tonight's match
-predicted_total = model.predict(todays_match_features)
+---
 
-# Apply the Floor Strategy
-safe_bet_line = predicted_total - safety_buffer
+## non-goals (explicit)
 
-print(f"Model predicts: {predicted_total}")
-print(f"To maintain 10% risk, bet on: Alternative OVER {safe_bet_line}")
+this repo is **not**:
+
+* a betting bot
+* a guaranteed profit system
+* a model zoo
+* a tips channel
+* an ML flex project
+
+it is a controlled, adversarial experiment against uncertainty.
+
+---
+
+## status
+
+**ongoing. never “done”.**
+every change must justify itself against **risk, not excitement**.
+
+if the experiment stops outperforming inactivity, it gets shut down.
+
+---
+
+next step options (pick one, we wire it properly):
+
+* document the `/results` schema (what gets logged, forever)
+* formalize league-specific calibration rules
+* harden bankroll math against tail events
