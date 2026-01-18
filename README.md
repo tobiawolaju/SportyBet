@@ -9,13 +9,75 @@ This repository contains research and implementation details for four distinct a
     - [2. Gradient Boosting (XGBoost)](#2-gradient-boosting-xgboost)
     - [3. PID Controller](#3-pid-controller-reactive-risk)
     - [4. Conformal Prediction](#4-conformal-prediction-statistical-risk)
+2. [Project Structure](#project-structure)
+3. [Data Acquisition (Scraper)](#data-acquisition-scraper)
+4. [Live API Endpoints](#live-api-endpoints)
+5. [Comparative Analysis](#comparative-analysis)
+6. [The Recommended Stack](#the-recommended-stack)
+7. [Implementation Logic](#implementation-logic)
 
-2. [Data Acquisition (Scraper)](#data-acquisition-scraper)
-3. [Live API Endpoints](#live-api-endpoints)
+---
 
-4. [Comparative Analysis](#comparative-analysis)
-5. [The Recommended Stack](#the-recommended-stack)
-6. [Implementation Logic](#implementation-logic)
+## Project Structure
+
+```text
+SportyBet/
+├── README.md
+
+├── data/
+│   ├── raw/
+│   │   ├── matches/
+│   │   │   └── sportybet_YYYY_MM_DD.json
+│   │   └── stats/
+│   │       ├── cba_raw.csv
+│   │       └── lnb_raw.csv
+│   │
+│   ├── processed/
+│   │   ├── cba_features.parquet
+│   │   ├── lnb_features.parquet
+│   │   └── metadata.json
+│   │
+│   └── splits/
+│       ├── cba_train.csv
+│       ├── cba_calibration.csv
+│       └── cba_test.csv
+
+├── models/
+│   ├── xgboost/
+│   │   ├── train.py
+│   │   ├── predict.py
+│   │   ├── features.py
+│   │   └── model.bin
+│   │
+│   └── conformal/
+│       ├── calibrate.py
+│       ├── buffers.json
+│       └── diagnostics.py
+
+├── strategy/
+│   ├── threshold.py
+│   ├── selector.py
+│   └── bet_rules.md
+
+├── simulation/
+│   ├── bankroll.py
+│   ├── backtest.py
+│   └── reports/
+
+├── services/
+│   ├── matchfetcher/        ← your EXISTING puppeteer app
+│   │   ├── server.js
+│   │   ├── puppeteer.config.cjs
+│   │   └── package.json
+│   │
+│   └── predictor_api/
+│       ├── app.py
+│       └── routes.py
+
+└── notebooks/
+    ├── residuals.ipynb
+    └── feature_sanity.ipynb
+```
 
 ---
 

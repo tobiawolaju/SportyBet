@@ -1,0 +1,10 @@
+pace_home
+pace_away
+ortg_home
+ortg_away
+drtg_home
+drtg_away
+last5_total_avg
+rest_days_home
+rest_days_away
+home_indicator
